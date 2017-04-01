@@ -16,13 +16,17 @@ Outside of the SoulSeek protocol:
 * You can then _index_ users browse data. This searches the MusicBrainz API to identify artists/releases
 * Once there's one or more collections indexed, you can run a recommendation algorithm to get a list of recommendations based on the contents of those collections.
 
+HOWTO:
+
+To set initial username/password, or listening port, run database.py with either of the following commands:
+
+* --setlogin <_username_> <_password_>
+* --setlistenport <_port_>
+
 Requirements:
 * Python 3.5
 * Python packages: Flask, Flask-SocketIO, scikit-learn, musicbrainzngs, numpy, (probably a few more, just run and add them as it throws errors. I'll make it pip installable soon.)
 
-Known Issues:
+Known issues (besides all the missing features):
 
-Besides all the missing features, there are two immediate issues with the current features that will be fixed over the coming days:
-
-* username and password has to be manually set by modifying _database.py_ and adding them to lines 32 and 33.
 * recommender will try to find _your_ files in the db, but scanning local directories hasn't been added yet, only solution is to run the offical client under preferred name, add user to jass, add files to db, shutdown official client, rename jass user to same name, relaunch jass and run recommender. Or... just wait a few days till it's fixed ;)
