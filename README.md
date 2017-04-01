@@ -23,6 +23,9 @@ To set initial username/password, or listening port, run database.py with either
 * --setlogin <_username_> <_password_>
 * --setlistenport <_port_>
 
+To run the application, run _start_server.py_, then navigate to you servers IP and go to port 5000 (e.g. _192.168.1.100:5000_)
+
+
 Requirements:
 * Python 3.5
 * Python packages: Flask, Flask-SocketIO, scikit-learn, musicbrainzngs, numpy, (probably a few more, just run and add them as it throws errors. I'll make it pip installable soon.)
