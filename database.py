@@ -22,6 +22,7 @@ from __future__ import print_function
 import sqlite3, os, re
 from pprint import pprint
 import threading
+import argparse
 
 class Database(threading.Thread):
 
@@ -145,6 +146,24 @@ class Database(threading.Thread):
         finally:
             self.conn.commit()
             return self.conn
+
+    def setLogin(self, username, password):
+        try:
+            self.conn.execute('UPDATE config set username=?, password=? WHERE rowid=?;', (username, password, 1))
+        except Exception as e:
+            print(str(e))
+        finally:
+            self.conn.commit()
+
+    def setListenPort(self, port):
+        try:
+            self.conn.execute('UPDATE config set listen_port=? WHERE rowid=?;', (port, 1))
+        except Exception as e:
+            print(str(e))
+        finally:
+            self.conn.commit()
+
+
 
     def addUserData(self, user, data):
         # cleans, validates, and inserts users browsed data to database
@@ -524,5 +543,20 @@ class Database(threading.Thread):
 
 
 if __name__ == '__main__':
-    db = Database()
-    db.removeUser('britpop trump')
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--setlogin", nargs=2, metavar=('<username>', '<password>'), help="update the username and password")
+    parser.add_argument("--setlistenport", type=int, help="set a listening port number in the range 0-65535 (restart required before change takes affect)")
+    args = parser.parse_args()
+
+    if args.setlogin:
+        db = Database()
+        db.setLogin(args.setlogin[0], args.setlogin[1])
+        db.close()
+
+    elif args.setlistenport:
+        db = Database()
+        db.setListenPort(args.setlistenport)
+        db.close()
+
+    # db.removeUser('britpop trump')
