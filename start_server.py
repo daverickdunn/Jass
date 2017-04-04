@@ -61,7 +61,7 @@ def handle_message(message):
 class flaskThread(threading.Thread):
     def __init__(self, conn_t):
         global jass_callback
-        jass_callback = conn_t.messagesFromGUI
+        jass_callback = conn_t.clientRouter
         super(flaskThread, self).__init__()
 
     # override run to launch socketio from within Flask thread

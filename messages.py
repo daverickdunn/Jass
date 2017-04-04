@@ -33,7 +33,7 @@ class Message(object):
         return struct.unpack("<I", self.message[ self.cursor-4 : self.cursor ])[0]
     def unpackLargeInt(self):
         self.cursor += 8
-        return struct.unpack("q", self.message[ self.cursor-8 : self.cursor ])[0]
+        return struct.unpack("<Q", self.message[ self.cursor-8 : self.cursor ])[0]
     def unpackString(self):
         len_str = struct.unpack("<I", self.message[ self.cursor : self.cursor+4 ])[0]
         self.cursor += 4 + len_str
@@ -43,6 +43,8 @@ class Message(object):
             return struct.unpack("%ds" % len_str, self.message[ self.cursor-len_str : self.cursor ])[0].decode("utf-8")
         except:
             try:
+                print("DECODING ISO-8859-1")
+                print(struct.unpack("%ds" % len_str, self.message[ self.cursor-len_str : self.cursor ])[0].decode("iso-8859-1"))
                 return struct.unpack("%ds" % len_str, self.message[ self.cursor-len_str : self.cursor ])[0].decode("iso-8859-1")
             except:
                 raise
@@ -431,7 +433,25 @@ def recurDir(parent, nodes):
 class SharedFileList(Message):
     @staticmethod
     def packMessage(options):
-        return None
+
+        msg = bytearray()
+        msg.extend(packInt(len(options['shares'])))                 # num dirs
+        # iter dirs
+        for name, files in options['shares'].items():               # loop
+            msg.extend(packString(name))            # dir name
+            msg.extend(packInt(len(files)))                         # num files
+            # iter files
+            for _file in files:
+                msg.extend(packBool('1'))
+                msg.extend(packString(_file['title']))
+                msg.extend(packLargeInt(_file['size']))
+                msg.extend(packString(_file['ext']))
+                msg.extend(packInt(len(_file['attributes'])))
+                for _attr, _val in _file['attributes'].items():
+                    msg.extend(packInt(int(_attr)))
+                    msg.extend(packInt(_val))
+
+        return createMessage(packInt(5) + zlib.compress(msg))
 
     def unpackMessage(self):
         try:
@@ -443,7 +463,6 @@ class SharedFileList(Message):
         num_dirs = self.unpackInt()
         for i in range(0, num_dirs):
             directory = self.unpackString()
-
             data['rec_data'][directory] = []
 
             # data['flat_dirs'].append(directory) # for reccomender system
@@ -452,21 +471,43 @@ class SharedFileList(Message):
             leaf = recurDir(data['data'], nodes)
             num_files = self.unpackInt()
 
+            # print('*' * 20)
+            # print(directory)
+            # print(num_files)
+
             for j in range(0, num_files):
                 self.cursor += 1 # Byte not used ... ?
                 file_name = self.unpackString()
-                file_size = self.unpackLargeInt()
-                file_ext = self.unpackString()
-                file_num_attr = self.unpackInt()
+                # print(file_name)
 
-                attributes = []
+                file_size = self.unpackLargeInt()
+                # print(file_size)
+
+                file_ext = self.unpackString()
+                # print(file_ext)
+
+                file_num_attr = self.unpackInt()
+                # print(file_num_attr)
+
+
+                # attributes = []
+                # for k in range(file_num_attr):
+                #     file_attr_pos = self.unpackInt()
+                #     file_attr = self.unpackInt()
+                #     attributes.append({'att' : file_attr_pos, 'val' : file_attr})
+
+                attributes = {}
                 for k in range(file_num_attr):
                     file_attr_pos = self.unpackInt()
                     file_attr = self.unpackInt()
-                    attributes.append({'att' : file_attr_pos, 'val' : file_attr})
-                leaf['bin'][file_name] = file_size
+                    attributes[file_attr_pos] = file_attr
 
+
+                leaf['bin'][file_name] = file_size
                 data['rec_data'][directory].append({'title' : file_name, 'attributes': attributes})
+
+
+
 
         return data
 

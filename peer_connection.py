@@ -64,15 +64,12 @@ class PeerConnection(threading.Thread):
             self.messageQueue.append(message)
         else:
             print('[Peer Thread ' + str(self.token) + '] Sending message to peer: ' + str(message['code']))
-            pprint(message)
             self.conn.send(messages.peercodes[message['code']].packMessage(message))
-
 
     def sendAll(self):
         self.initPhase = False
         while len(self.messageQueue) > 0:
             self.send(self.messageQueue.pop())
-
 
     def run(self):
         self.conn.setblocking(0)

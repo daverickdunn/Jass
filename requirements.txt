@@ -1,0 +1,7 @@
+flask
+flask-socketio
+mutagen
+musicbrainzngs
+pandas
+sklearn
+scipy

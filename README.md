@@ -25,11 +25,16 @@ To set initial username/password, or listening port, run database.py with either
 
 To run the application, run _start_server.py_, then navigate to you servers IP and go to port 5000 (e.g. _192.168.1.100:5000_)
 
+For the recommender to work correctly you need to index some of your own files. Currently must be placed in the 'collection' folder in the root of the application (symbolic links haven't been tested but might work). On restart these files will be added to the DB. They'll be indexed along with all other users files when you select "index all collections" from the Recommender View
+
 
 Requirements:
 * Python 3.5
-* Python packages: Flask, Flask-SocketIO, scikit-learn, musicbrainzngs, numpy, (probably a few more, just run and add them as it throws errors. I'll make it pip installable soon.)
-
-Known issues (besides all the missing features):
-
-* recommender will try to find _your_ files in the db, but scanning local directories hasn't been added yet, only solution is to run the offical client under preferred name, add user to jass, add files to db, shutdown official client, rename jass user to same name, relaunch jass and run recommender. Or... just wait a few days till it's fixed ;)
+* Python packages:
+    flask
+    flask-socketio
+    mutagen
+    musicbrainzngs
+    pandas
+    sklearn
+    scipy

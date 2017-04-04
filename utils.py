@@ -24,13 +24,13 @@ def packInt(uInt32):
     return struct.pack("<I", int(uInt32))
 
 def packLargeInt(sInt64):
-    return struct.pack("<L", int(sInt64))
+    return struct.pack("<Q", int(sInt64))
 
 def packString(string):
-    return struct.pack("<I", len(string)) + bytes(string, 'utf-8')
+    return struct.pack("<I", len(string)) + bytes(string, 'latin-1')
 
 def packBool(boolean):
-    return struct.pack("c", boolean)
+    return struct.pack("c", boolean.encode('ascii'))
 
 def createMessage(message_string):
     messageHex = binascii.hexlify(message_string)
@@ -41,7 +41,7 @@ def unpackInt(byteArray):
     return struct.unpack("<I", byteArray[0:4])[0] # , 4
 
 def unpackLargeInt(byteArray):
-    return struct.unpack("I", byteArray[0:8])[0] # , 8
+    return struct.unpack("<Q", byteArray[0:8])[0] # , 8
 
 def unpackString(byteArray):
     len_str = struct.unpack("I", byteArray[0:4])[0]

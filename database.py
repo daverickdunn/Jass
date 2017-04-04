@@ -30,8 +30,6 @@ class Database(threading.Thread):
 
         self.db = 'database.sqlite'
         self.countries = 'iso_3166_country_codes.csv'
-        self.default_user = ''
-        self.default_pass = ''
 
         if not os.path.isfile( os.path.join( os.getcwd(), self.db)):
             self.conn = sqlite3.connect(self.db)
@@ -117,7 +115,9 @@ class Database(threading.Thread):
 
                 self.conn.executemany('INSERT INTO countries (country, code) VALUES (?, ?);', countrys_codes)
 
-                self.conn.execute('INSERT INTO config (username, password, listen_port) VALUES (?, ?, ?);', (self.default_user, self.default_pass, 2444,))
+                self.conn.execute('INSERT INTO config (username, password, listen_port) VALUES (?, ?, ?);', ('', '', 2444,))
+                self.addUser(('', 'XW'))
+
 
         except:
             try:
@@ -140,16 +140,16 @@ class Database(threading.Thread):
     def addUser(self, user):
         try:
             country_id = self.cursor.execute('SELECT rowid FROM countries WHERE code=?;', (user[1],) ).fetchone()[0]
-            return self.cursor.execute('INSERT INTO users (name, country_id) VALUES (?, ?)', (user[0], country_id))
+            return self.cursor.execute('INSERT INTO users (name, country_id) VALUES (?, ?)', (user[0], country_id)).lastrowid
         except Exception as e:
             print(str(e))
         finally:
             self.conn.commit()
-            return self.conn
 
     def setLogin(self, username, password):
         try:
             self.conn.execute('UPDATE config set username=?, password=? WHERE rowid=?;', (username, password, 1))
+            self.conn.execute('UPDATE users set name=? WHERE rowid=?;', (username, 1,))
         except Exception as e:
             print(str(e))
         finally:
@@ -195,13 +195,24 @@ class Database(threading.Thread):
             if len(cleaned[path]) == 0:
                 del cleaned[path]
 
-        user_id = self.cursor.execute("SELECT rowid FROM users WHERE name=(?)", (user,)).fetchone()[0]
+        try:
+            user_id = self.cursor.execute("SELECT rowid FROM users WHERE name=(?)", (user,)).fetchone()[0]
+        except Exception as e:
+            #TODO: auto add user, requires passing (name, country) instead of just name
+            print(e)
+            print('Must add user before adding data')
+            return
 
         print('[Database] Adding', user + '\'s browse data.')
 
         files_to_add = []
         for path, files in cleaned.items():
-            dir_list = path.split('\\')
+            # dir_list = path.split('\\')
+
+            if '\\' in path:
+                dir_list = path.split('\\')
+            else:
+                dir_list = path.split('/')
 
             if len(dir_list) > 0: level1 = dir_list[-1]
             else: level1 = None
@@ -212,11 +223,11 @@ class Database(threading.Thread):
 
             temp_files = []
             for fi in files:
-                temp_attr = None
-                try:
-                    temp_attr = fi['attributes'][1]['val']
-                except IndexError:
-                    pass
+                if 1 in fi['attributes']:
+                    temp_attr = fi['attributes'][1]
+                else:
+                    temp_attr = None
+
                 temp_files.append((fi['title'], temp_attr))
 
             if len(temp_files) > 0:
@@ -231,31 +242,6 @@ class Database(threading.Thread):
 
 
     def _addMusicBrainzItem(self, user_id, item):
-
-        '''
-        item format:
-
-        {'artists': [('28cbf94d-0700-4095-a188-37e373b069a7',
-                      'Basement Jaxx',
-                      'GB',
-                      [('british', '4'),
-                       ('dance', '3'),
-                       ('dance and electronica', '1'),
-                       ('electronic', '2'),
-                       ('english', '1'),
-                       ('house', '1'),
-                       ('uk', '2'),
-                       ('uk garage', '1')])],
-         'folder_id': 1,
-         'release': ('2189b72c-82d9-31c1-b95d-4cb7550f1c6e', 'The Singles', '2005', 5),
-         'tags': [('rock', '1'),
-                  ('electronic', '2'),
-                  ('dance', '2'),
-                  ('house', '4'),
-                  ('hip-hop', '2'),
-                  ('breakbeat', '3')],
-         'type': 'Album'}
-        '''
 
         pprint(item)
 

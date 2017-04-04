@@ -23,10 +23,11 @@ import threading
 import json
 import time
 import struct
-from pprint import pprint
 import utils
 import messages
+from pprint import pprint
 
+import file_reader
 from database import Database
 from room import Room
 from indexer import Indexer
@@ -46,6 +47,8 @@ class Jass(threading.Thread):
         # TODO: move to serverConnection
         self.username = config['username']
         self.password = config['password']
+        # TODO: change to list of dirs
+        self.shares_path = 'collection'
 
         self.listen_port = config['listen_port']
 
@@ -68,6 +71,8 @@ class Jass(threading.Thread):
         self.lockCount = 0
 
         super(Jass, self).__init__()
+
+        self.addOwnUserData()
 
         self.startJass()
 
@@ -97,7 +102,9 @@ class Jass(threading.Thread):
         elif message['code'] == 'S5':
             if message['exists']:
                 pprint(message)
-                Database().addUser((message['user'], message['country_code'])).close()
+                db = Database()
+                db.addUser((message['user'], message['country_code']))
+                db.close()
 
         elif message['code'] == 'S13':
             self.findRoom(message).addComment(message)
@@ -121,6 +128,18 @@ class Jass(threading.Thread):
         # print('[Jass Thread] Lock Acquired: ', self.lockCount)
         print('[Jass Thread] Incoming Peer Message: ' + str(message['code']))
 
+
+        if message['code'] == 'P4':
+
+            for p in self.peerConnections:
+                print(p.user)
+
+            pprint(message, depth=1)
+            shares = file_reader.buildFileFolder(self.shares_path)
+            peer = next((x for x in self.peerConnections if x.user == message['user']), None)
+            peer.send({'code': 'P5', 'shares': shares})
+            return
+
         # browse files response
         if message['code'] == 'P5':
             # cache data
@@ -129,17 +148,16 @@ class Jass(threading.Thread):
             # if request pending to add to DB, reissue request
             if message['user'] in self.usersToBeAddedToDB:
                 del self.usersToBeAddedToDB[message['user']]
-                self.messagesFromGUI({"code": 'J2', "user" : message['user']})
-                return # Don't add to browse
+                self.clientRouter({"code": 'J2', "user" : message['user']})
+                return # Don't re-add to browse
 
         self.client_gui_callback(message)
         # print('[Jass Thread] Lock Released: ', self.lockCount)
         # self.lock.release()
 
 
-    # called by Flask server
-    # TODO: rename to 'clientRouter'
-    def messagesFromGUI(self, message):
+    # callback for Flask thread
+    def clientRouter(self, message):
         # self.lock.acquire()
         # self.lockCount += 1
         # print('[Jass Thread] Lock Acquired: ', self.lockCount)
@@ -199,7 +217,7 @@ class Jass(threading.Thread):
             # else we ask peer for browsedata and set flag to add to DB on receipt
             else:
                 self.usersToBeAddedToDB[message['user']] = None
-                self.messagesFromGUI({"code": 'P4', "user" : message['user']})
+                self.clientRouter({"code": 'P4', "user" : message['user']})
 
 
         # removes browse data for user
@@ -228,6 +246,10 @@ class Jass(threading.Thread):
             cf = ContentFilter(self.username, 10, anon)
             cf.daemon = True
             cf.start()
+
+
+
+
 
         # print('[Jass Thread] Lock Released: ', self.lockCount)
         # self.lock.release()
@@ -268,7 +290,6 @@ class Jass(threading.Thread):
             else:
                 print('[Jass Thread] Incoming initMessage (Unknown Message): ' + str(initCode))
 
-
     def outgoingPeerConns(self, message):
         peer = next((x for x in self.peerConnections if x.user == message['user']), None)
         # Code 3 from server, triggered by us trying to connect to a peer
@@ -298,9 +319,7 @@ class Jass(threading.Thread):
                                             'user' : peer.user,
                                             'type' : peer.type})
 
-
     def incomingPeerConns(self, message):
-
         peer = PeerConnection(
             parent=self,
             host=message['ip'],
@@ -312,13 +331,10 @@ class Jass(threading.Thread):
         )
         tries = 0
         while tries < 10:
-            print('waiting for qConn')
-            print(self.peerConnsQueue)
             qConn = next((x for x in self.peerConnsQueue if x['user'] == message['user']), None)
             if qConn:
-                print('qConn Found!')
                 peer.conn = qConn['conn']
-                print('Starting thread from incomingPeerConns')
+                self.peerConnections.append(peer)
                 peer.start()
                 break
             time.sleep(1)
@@ -335,6 +351,12 @@ class Jass(threading.Thread):
             except:
                 self.server_conn.send({'code': 'S1001', 'user': peer.user, 'token': peer.token})
 
-
     def findRoom(self, message):
         return next((x for x in self.joinedRooms if x.room == message['room']), None)
+
+    def addOwnUserData(self):
+        db = Database()
+        db.start()
+        pprint(file_reader.buildFileFolder(self.shares_path), depth=1)
+        db.addUserData(self.username, file_reader.buildFileFolder(self.shares_path))
+        db.close()
