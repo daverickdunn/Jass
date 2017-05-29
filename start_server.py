@@ -35,6 +35,11 @@ socketio = SocketIO(app, static_url_path='', async_mode='threading', logger=True
 
 jass_callback = None # give Jass method global scope
 
+
+to_jass_queue = None
+from_jass_queue = None
+
+
 # messages forwarded here by Jass
 def send_message(message):
     print('[Flask Thread] Message To GUI: ' + str(message['code']))
@@ -48,20 +53,17 @@ def index():
 # accept websocket connection
 @socketio.on('connect', namespace='/test')
 def connect():
-    jass_callback(_byteify({"code": 'J1'}))
+    to_jass_queue.put(_byteify({"code": 'J1'}))
 
 # accept json messages from websocket
 @socketio.on('message_from_gui', namespace='/test')
 def handle_message(message):
     print('[Flask Thread] Message From GUI: ' + str(message['code']))
-    global jass_callback
-    jass_callback(_byteify(message))
+    to_jass_queue.put(_byteify(message))
 
 # Flask thread
 class flaskThread(threading.Thread):
-    def __init__(self, conn_t):
-        global jass_callback
-        jass_callback = conn_t.clientRouter
+    def __init__(self):
         super(flaskThread, self).__init__()
 
     # override run to launch socketio from within Flask thread
@@ -75,12 +77,23 @@ if __name__ == '__main__':
     conn_t = Jass(send_message)
     conn_t.daemon = True
 
+    from_jass_queue = conn_t.outgoing_queue
+    to_jass_queue   = conn_t.incoming_queue
+
     print('Starting Flask')
-    flask_t = flaskThread(conn_t)
+    flask_t = flaskThread()
     flask_t.daemon = True
 
     conn_t.start()
     flask_t.start()
+
+    while True:
+        item = from_jass_queue.get()
+        pprint(item)
+        if item is None:
+            break
+        send_message(item)
+        from_jass_queue.task_done()
 
     while True:
         time.sleep(1)

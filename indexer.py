@@ -128,8 +128,9 @@ class Indexer(threading.Thread):
                 print('\n===========================\n')
 
                 db = Database()
-                db.start()
+                # db.start()
                 db.addMusicBrainzItem(user, result)
+                db.close()
 
                 match_count += 1
                 continue
@@ -138,8 +139,9 @@ class Indexer(threading.Thread):
                 print('\n===========================\n')
 
                 db = Database()
-                db.start()
+                # db.start()
                 db.setFolderAsUnknown(fold_id)
+                db.close()
 
                 unknown.append(fold)
 

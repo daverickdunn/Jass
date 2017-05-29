@@ -18,11 +18,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 class Room(object):
-    def __init__(self, message, client_gui_callback):
+    def __init__(self, message):
         self.room  = message['room']
         self.users = message['users']
         self.slots = message['slots']
-        self.client_gui_callback = client_gui_callback
 
         self.chat_messages = []
 

@@ -59,11 +59,16 @@ def _buildFileFolder(path, file_folder):
                 'attributes': {}
             }
 
+            print(entry.name)
+
             try:
                 mutagen_file = mutagen.File(entry.path)
-                if mutagen_file:
+                if mutagen_file and not entry.path.endswith('.jpg'):
+                    print(entry.name)
                     this_file['attributes']['0'] = mutagen_file.info.bitrate
+                    print(mutagen_file.info.bitrate)
                     this_file['attributes']['1'] = round(mutagen_file.info.length)
+                    print(mutagen_file.info.length)
             except mutagen.MutagenError as e:
                 print('Mutagen error:', e)
             finally:
@@ -72,6 +77,7 @@ def _buildFileFolder(path, file_folder):
 def buildFileFolder(path):
     file_folder = {}
     _buildFileFolder(path, file_folder)
+    pprint(file_folder)
     return file_folder
 
 

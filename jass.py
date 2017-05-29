@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import print_function
 import socket
-import os
+# import os
 import threading
 import json
 import time
@@ -34,6 +34,8 @@ from indexer import Indexer
 from content_filter import ContentFilter
 from peer_connection import PeerConnection
 from server_connection import ServerConnection
+
+import queue
 
 
 class Jass(threading.Thread):
@@ -57,8 +59,7 @@ class Jass(threading.Thread):
         self.listen_sock.bind(('',self.listen_port))
         self.listen_sock.listen(1)
 
-
-        self.client_gui_callback = outgoing_callback
+        # self.client_gui_callback = outgoing_callback
 
         self.joinedRooms = []
         self.userBrowseData = {}
@@ -70,10 +71,13 @@ class Jass(threading.Thread):
         self.lock = threading.Lock()
         self.lockCount = 0
 
+        # message queues for interface
+        self.incoming_queue = queue.Queue()
+        self.outgoing_queue = queue.Queue()
+
         super(Jass, self).__init__()
 
-        self.addOwnUserData()
-
+        # self.addOwnUserData()
         self.startJass()
 
 
@@ -92,6 +96,18 @@ class Jass(threading.Thread):
         # set num shared files & folders
         self.server_conn.send({'code' : 'S35', 'dirs' : 43, 'files' : 100}) # TODO: Send actual numbers
 
+        t1 = threading.Thread(target=self.handle_queue)
+        t1.daemon = True
+        t1.start()
+
+
+    def handle_queue(self):
+        while True:
+            item = self.incoming_queue.get()
+            if item is None:
+                break
+            self.clientRouter(item)
+            self.incoming_queue.task_done()
 
 
     # Messages are forwarded here from the serverConnection
@@ -105,11 +121,10 @@ class Jass(threading.Thread):
                 db = Database()
                 db.addUser((message['user'], message['country_code']))
                 db.close()
-
         elif message['code'] == 'S13':
             self.findRoom(message).addComment(message)
         elif message['code'] == 'S14':
-            new_room = Room(message, self.client_gui_callback)
+            new_room = Room(message)
             self.joinedRooms.append(new_room)
         elif message['code'] == 'S15':
             self.joinedRooms.remove(self.findRoom(message))
@@ -118,7 +133,8 @@ class Jass(threading.Thread):
             self.incomingPeerConns(message)
             return
 
-        self.client_gui_callback(message) # forward the message to the Flask Server
+        print('adding to queue', message['code'])
+        self.outgoing_queue.put(message) # forward the message to the Flask Server
 
 
     # Messages are forwarded here from peerConnections
@@ -151,7 +167,7 @@ class Jass(threading.Thread):
                 self.clientRouter({"code": 'J2', "user" : message['user']})
                 return # Don't re-add to browse
 
-        self.client_gui_callback(message)
+        self.outgoing_queue.put(message)
         # print('[Jass Thread] Lock Released: ', self.lockCount)
         # self.lock.release()
 
@@ -205,7 +221,7 @@ class Jass(threading.Thread):
                     'rooms' : [room.roomInfo() for room in self.joinedRooms],
                     'browse': self.userBrowseData,
                     'users' : users}
-            self.client_gui_callback(data)
+            self.outgoing_queue.put(data)
 
         # adds user data to database
         elif message['code'] == 'J2':
@@ -242,7 +258,7 @@ class Jass(threading.Thread):
         elif message['code'] == 'J5':
             print('[Jass Thread] Starting Recommender')
 
-            anon = lambda x: self.client_gui_callback({'code' : 'J5', 'recommendations': x})
+            anon = lambda x: self.outgoing_queue.put({'code' : 'J5', 'recommendations': x})
             cf = ContentFilter(self.username, 10, anon)
             cf.daemon = True
             cf.start()

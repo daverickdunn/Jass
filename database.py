@@ -49,6 +49,9 @@ class Database(threading.Thread):
                 # JASS config. TODO: add upload/download folders, bandwidth limits, etc.
                 self.conn.execute('CREATE TABLE config (username TEXT PRIMARY KEY, password TEXT, listen_port INTEGER);')
 
+                # JASS config. TODO: add upload/download folders, bandwidth limits, etc.
+                self.conn.execute('CREATE TABLE shares (path TEXT PRIMARY KEY, password TEXT, listen_port INTEGER);')
+
                 # SoulSeek users table
                 self.conn.execute('CREATE TABLE users (name TEXT PRIMARY KEY, country_id INTEGER, FOREIGN KEY(country_id) REFERENCES countries(rowid));')
 
@@ -169,82 +172,87 @@ class Database(threading.Thread):
         # cleans, validates, and inserts users browsed data to database
         # TODO: quite slow implementation, can be updated to make inserts much more efficient
 
+        formats = set(['3gp', 'aa', 'aac', 'aax', 'act', 'aiff', 'amr',
+        'ape', 'au', 'awb', 'dct', 'dss', 'dvf', 'flac', 'gsm', 'iklax',
+        'ivs', 'm4a', 'm4b', 'm4p', 'mmf', 'mp3', 'mpc', 'msv', 'ogg',
+        'oga', 'opus', 'ra', 'rm', 'raw', 'sln', 'tta', 'vox', 'wav',
+        'wma', 'wv', 'webm'])
+
+        cleaned = {}
+        for path, files in data.items():
+            cleaned[path] = []
+            for item in files:
+                temp = item['title'].rsplit('.', 1)
+                # check if file is an audio format
+                if len(temp) > 1 and temp[1] in formats:
+                    # remove junk characters in title
+                    for exp in [r'^[0-9]*|-|_|\.|\(|\)|\[|\]|\{|\}', ' {2,}']:
+                        temp[0] = re.sub(exp, " ", temp[0]).strip()
+
+                    title = temp[0]
+                    if temp[0] == '':
+                        title = None
+
+                    cleaned[path].append({'title': title, 'attributes': item['attributes']})
+            # remove empty folders
+            if len(cleaned[path]) == 0:
+                del cleaned[path]
+
         try:
-            with self.conn:
-                formats = set(['3gp', 'aa', 'aac', 'aax', 'act', 'aiff', 'amr',
-                'ape', 'au', 'awb', 'dct', 'dss', 'dvf', 'flac', 'gsm', 'iklax',
-                'ivs', 'm4a', 'm4b', 'm4p', 'mmf', 'mp3', 'mpc', 'msv', 'ogg',
-                'oga', 'opus', 'ra', 'rm', 'raw', 'sln', 'tta', 'vox', 'wav',
-                'wma', 'wv', 'webm'])
+            user_id = self.cursor.execute("SELECT rowid FROM users WHERE name=(?)", (user,)).fetchone()[0]
+        except Exception as e:
+            #TODO: auto add user, requires passing (name, country) instead of just name
+            print(e)
+            print('Must add user before adding data')
+            return
 
-                cleaned = {}
-                for path, files in data.items():
-                    cleaned[path] = []
-                    for item in files:
-                        temp = item['title'].rsplit('.', 1)
-                        # check if file is an audio format
-                        if len(temp) > 1 and temp[1] in formats:
-                            # remove junk characters in title
-                            for exp in [r'^[0-9]*|-|_|\.|\(|\)|\[|\]|\{|\}', ' {2,}']:
-                                temp[0] = re.sub(exp, " ", temp[0]).strip()
+        print('[Database] Adding', user + '\'s browse data.')
 
-                            title = temp[0]
-                            if temp[0] == '':
-                                title = None
+        files_to_add = []
+        for path, files in cleaned.items():
+            # dir_list = path.split('\\')
 
-                            cleaned[path].append({'title': title, 'attributes': item['attributes']})
-                    # remove empty folders
-                    if len(cleaned[path]) == 0:
-                        del cleaned[path]
+            if '\\' in path:
+                dir_list = path.split('\\')
+            else:
+                dir_list = path.split('/')
 
+            if len(dir_list) > 0: level1 = dir_list[-1]
+            else: level1 = None
+            if len(dir_list) > 1: level2 = dir_list[-2]
+            else: level2 = None
+            if len(dir_list) > 2: level3 = dir_list[-3]
+            else: level3 = None
+
+            temp_files = []
+            for fi in files:
+                if 1 in fi['attributes']:
+                    temp_attr = fi['attributes'][1]
+                else:
+                    temp_attr = None
+
+                temp_files.append((fi['title'], temp_attr))
+
+            if len(temp_files) > 0:
                 try:
-                    user_id = self.cursor.execute("SELECT rowid FROM users WHERE name=(?)", (user,)).fetchone()[0]
-                except Exception as e:
-                    #TODO: auto add user, requires passing (name, country) instead of just name
-                    print(e)
-                    print('Must add user before adding data')
-                    return
-
-                print('[Database] Adding', user + '\'s browse data.')
-
-                files_to_add = []
-                for path, files in cleaned.items():
-                    # dir_list = path.split('\\')
-
-                    if '\\' in path:
-                        dir_list = path.split('\\')
-                    else:
-                        dir_list = path.split('/')
-
-                    if len(dir_list) > 0: level1 = dir_list[-1]
-                    else: level1 = None
-                    if len(dir_list) > 1: level2 = dir_list[-2]
-                    else: level2 = None
-                    if len(dir_list) > 2: level3 = dir_list[-3]
-                    else: level3 = None
-
-                    temp_files = []
-                    for fi in files:
-                        if 1 in fi['attributes']:
-                            temp_attr = fi['attributes'][1]
-                        else:
-                            temp_attr = None
-
-                        temp_files.append((fi['title'], temp_attr))
-
-                    if len(temp_files) > 0:
+                    with self.conn:
                         pprint((user_id, level3, level2, level1))
                         self.cursor.execute('INSERT INTO folders (user_id, level3, level2, level1) VALUES (?, ?, ?, ?);', (user_id, level3, level2, level1))
                         fo_id = self.cursor.lastrowid
                         files_to_add += [(fo_id, f[0], f[1]) for f in temp_files]
+                except sqlite3.IntegrityError as e:
+                    print(e)
+                    print('Could not add users data, columns already exist')
 
+        try:
+            with self.conn:
                 self.cursor.executemany('INSERT INTO files (folder_id, title, length) VALUES (?, ?, ?);', files_to_add)
                 self.conn.commit()
-                print('[Database] Done.')
-
         except sqlite3.IntegrityError as e:
             print(e)
             print('Could not add users data, columns already exist')
+
+        print('[Database] Done.')
 
 
 
