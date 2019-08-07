@@ -30,8 +30,6 @@ from pprint import pprint
 import file_reader
 from database import Database
 from room import Room
-from indexer import Indexer
-from content_filter import ContentFilter
 from peer_connection import PeerConnection
 from server_connection import ServerConnection
 
@@ -240,35 +238,6 @@ class Jass(threading.Thread):
         elif message['code'] == 'J3':
             if message['user'] in self.userBrowseData:
                 del self.userBrowseData[message['user']]
-
-        # run the MB Indexer
-        elif message['code'] == 'J4':
-            db = Database()
-            users = [x[0] for x in db.getAllUsers()]
-            db.close()
-
-            for user in users:
-                print('[Jass Thread] Starting Indexer for user:', user)
-                idx = Indexer(user)
-                idx.daemon = True
-                idx.start()
-                idx.join()
-
-        # run the recommender
-        elif message['code'] == 'J5':
-            print('[Jass Thread] Starting Recommender')
-
-            anon = lambda x: self.outgoing_queue.put({'code' : 'J5', 'recommendations': x})
-            cf = ContentFilter(self.username, 10, anon)
-            cf.daemon = True
-            cf.start()
-
-
-
-
-
-        # print('[Jass Thread] Lock Released: ', self.lockCount)
-        # self.lock.release()
 
 
     def peerAccept(self):
