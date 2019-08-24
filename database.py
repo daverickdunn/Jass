@@ -121,7 +121,6 @@ class Database(threading.Thread):
                 self.conn.execute('INSERT INTO config (username, password, listen_port) VALUES (?, ?, ?);', ('', '', 2444,))
                 self.addUser(('', 'XW'))
 
-
         except:
             try:
                 os.remove(self.db)
@@ -165,8 +164,6 @@ class Database(threading.Thread):
             print(str(e))
         finally:
             self.conn.commit()
-
-
 
     def addUserData(self, user, data):
         # cleans, validates, and inserts users browsed data to database
@@ -254,114 +251,6 @@ class Database(threading.Thread):
 
         print('[Database] Done.')
 
-
-
-
-    def _addMusicBrainzItem(self, user_id, item):
-
-        pprint(item)
-
-        # >>>>> insert type
-        type_id = self.cursor.execute('SELECT rowid FROM types WHERE type=?;', (item['type'],) ).fetchone()
-        if not type_id:
-            self.cursor.execute('INSERT INTO types (type) VALUES (?);', (item['type'],) )
-            type_id = self.cursor.lastrowid
-        else:
-            type_id = type_id[0]
-
-
-        # >>>>> insert release-group
-        release_id = self.cursor.execute('SELECT rowid FROM releasegroups WHERE mbid=?;', (item['release'][0],) ).fetchone()
-        if not release_id:
-            self.cursor.execute('INSERT INTO releasegroups VALUES (?, ?, ?, ?, ?);', ( item['release'] + (type_id,) ))
-            release_id = self.cursor.lastrowid
-        else:
-            release_id = release_id[0]
-            print('[Database] Release-group already exists in the database')
-
-
-        # >>>>> insert release-group tags
-        tag_ids = []
-        for tag in item['tags']:
-            tag_id = self.cursor.execute("SELECT rowid FROM tags WHERE tag=(?)", (tag[0],)).fetchone()
-            if tag_id:
-                tag_ids.append((tag_id[0], tag[1]))
-            else:
-                self.cursor.execute('INSERT INTO tags (tag) VALUES (?);', (tag[0],) )
-                tag_ids.append((self.cursor.lastrowid, tag[1]))
-
-
-        # >>>>> associcate tags with release-group
-        for tag_id in tag_ids:
-            self.cursor.execute('INSERT INTO releasegroup_tag_relation VALUES (?, ?, ?);', ((release_id,) + tag_id))
-
-
-        # >>>>> associate user with this release-group
-        self.cursor.execute('INSERT INTO user_releasegroup_relation VALUES (?, ?);', (user_id, release_id))
-
-
-        # >>>>> insert artists
-        artist_ids = []
-        for art in item['artists']:
-
-            art_mbid = art[0]
-            art_name = art[1]
-            art_country_code = art[2]
-            art_tags = art[3]
-
-            # if there's a country associated with artist x, find its rowid
-            if art[2]:
-                country_id = self.cursor.execute('SELECT rowid FROM countries WHERE code=?;', (art_country_code,) ).fetchone()[0]
-            else:
-                country_id = None
-
-            # check if the artist already exists, otherwise add new artist.
-            art_id = self.cursor.execute('SELECT rowid FROM artists WHERE mbid=?;', (art_mbid,) ).fetchone()
-            if not art_id:
-                self.cursor.execute('INSERT INTO artists (mbid, artist_name, country_id) VALUES (?, ?, ?);', (art_mbid, art_name, country_id) )
-                art_id = self.cursor.lastrowid
-            else:
-                art_id = art_id[0]
-
-            # store artist id's for later inserts
-            artist_ids.append(art_id)
-
-            # >>>>> insert artist tags
-            art_tag_ids = []
-            for tag in art_tags:
-                tag_id = self.cursor.execute("SELECT rowid FROM tags WHERE tag=(?)", (tag[0],)).fetchone()
-                if tag_id:
-                    art_tag_ids.append((tag_id[0], tag[1]))
-                else:
-                    self.cursor.execute('INSERT INTO tags (tag) VALUES (?);', (tag[0],) )
-                    art_tag_ids.append((self.cursor.lastrowid, tag[1]))
-
-            for tag_id in art_tag_ids:
-                self.cursor.execute('INSERT INTO artist_tag_relation VALUES (?, ?, ?);', ((art_id,) + tag_id))
-
-
-        # >>>>> associate all artists with user and release group
-        for artist_id in artist_ids:
-            # user-artist-relation
-            self.cursor.execute('INSERT INTO user_artist_relation VALUES (?, ?);', (user_id, artist_id))
-            self.cursor.execute('INSERT INTO artist_releasegroup_relation VALUES (?, ?);', (artist_id, release_id))
-
-
-        # >>>>> finally, update folder entry so future searches can skip, retry, etc.
-        self.cursor.execute('UPDATE folders SET releasegroup_id=? WHERE rowid=?', (release_id, item['folder_id']))
-
-
-    def bulkAddMusicBrainzData(self, user, data):
-        user_id = self.cursor.execute("SELECT rowid FROM users WHERE name=(?)", (user,)).fetchone()[0]
-        for item in data:
-            self._addMusicBrainzItem(user_id, item)
-        self.conn.commit()
-
-    def addMusicBrainzItem(self, user, item):
-        user_id = self.cursor.execute("SELECT rowid FROM users WHERE name=(?)", (user,)).fetchone()[0]
-        self._addMusicBrainzItem(user_id, item)
-        self.conn.commit()
-
     '''Get Methods'''
 
     def getAllUsers(self):
@@ -378,98 +267,9 @@ class Database(threading.Thread):
             files += self.cursor.execute(files_sql, tuple(folder_ids[i:i+100])).fetchall()
         return files
 
-    def getUserBrowseData(self, user):
-        folders = self.getFoldersByUser(user)
-        files = self.getFilesByFolderIDs([x[0] for x in folders])
-        data = {}
-        for x in folders:
-            data[x[0]] = [tuple(x[1:])]
-        for x in files:
-            data[x[1]].append(tuple(x[2:]))
-        return data
-
-
-    def getArtistByID(self, art_id):
-        return self.cursor.execute("SELECT artist_name FROM artists WHERE rowid=" + str(art_id)).fetchone()[0]
-
-    def getArtistsTags(self):
-        tags = self.cursor.execute("SELECT artist_tag_relation.artist_id, tags.tag FROM artist_tag_relation JOIN tags on artist_tag_relation.tag_id = tags.rowid").fetchall()
-        tags2 = {}
-        for key, val in tags:
-            if key in tags2:
-                tags2[key] += ' ' + val
-            else:
-                tags2[key] = val
-        return tags2
-
     def getConfig(self):
         config_tuple = self.cursor.execute('SELECT * FROM config;').fetchone()
         return {"username": config_tuple[0], "password": config_tuple[1], "listen_port": config_tuple[2]}
-
-    def getReleaseIDsByUser(self, user):
-        return [x[0] for x in self.cursor.execute('''
-            SELECT releasegroup_id
-            FROM user_releasegroup_relation
-            JOIN users ON user_releasegroup_relation.user_id=users.rowid
-            WHERE users.name=?;''', (user,)).fetchall()]
-
-    def getArtistIDsByUser(self, user):
-        return [x[0] for x in self.cursor.execute('''
-            SELECT user_artist_relation.artist_id
-            FROM user_artist_relation
-            JOIN users ON user_artist_relation.user_id=users.rowid
-            WHERE users.name=?;''', (user,) ).fetchall()]
-
-    def getTagIDsByReleaseID(self, release_id):
-        return [x[0] for x in self.cursor.execute('''
-            SELECT tag_id
-            FROM releasegroup_tag_relation
-            WHERE releasegroup_id=?;''', (release_id,)).fetchall()]
-
-    def getTagIDsByArtistID(self, artist_id):
-        return [x[0] for x in self.cursor.execute('''
-            SELECT tag_id
-            FROM artist_tag_relation
-            WHERE artist_id=?;''', (artist_id,)).fetchall()]
-
-    def getUserIDsByReleaseIDs(self, release_ids):
-        user_ids = []
-        for release_id in release_ids:
-            user_ids += [x[0] for x in self.cursor.execute('''
-                SELECT user_id
-                FROM user_releasegroup_relation
-                WHERE releasegroup_id=?;''', (release_id,)).fetchall()]
-        return user_ids
-
-
-    def getUserIDsByArtistIDs(self, artist_ids):
-        user_ids = []
-        for artist_id in artist_ids:
-            user_ids += [x[0] for x in self.cursor.execute('''
-                SELECT user_id
-                FROM user_artist_relation
-                WHERE artist_id=?;''', (artist_id,)).fetchall()]
-        return user_ids
-
-
-    def getReleaseIDsByTagIDs(self, tag_ids):
-        release_ids = []
-        for tag_id in tag_ids:
-            release_ids += [x[0] for x in self.cursor.execute('''
-                SELECT releasegroup_id
-                FROM releasegroup_tag_relation
-                WHERE tag_id=?;''', (str(tag_id),)).fetchall()]
-        return release_ids
-
-
-    def getArtistIDsByTagIDs(self, tag_ids):
-        artist_ids = []
-        for tag_id in tag_ids:
-            artist_ids += [x[0] for x in self.cursor.execute('''
-                SELECT artist_id
-                FROM artist_tag_relation
-                WHERE tag_id=?;''', (str(tag_id),)).fetchall()]
-        return artist_ids
 
     ''' Deletion Methods '''
 
@@ -483,12 +283,6 @@ class Database(threading.Thread):
                 user
                 folders
                     files
-                user_releasegroup_relation
-                    releasegroups with no other user
-                        tags with no other releasegroup
-                user_artist_relation
-                    artists with no other user
-                        tags with no other artist
                 '''
 
                 ''' get all IDs associated with this user '''
@@ -496,53 +290,13 @@ class Database(threading.Thread):
                 folder_ids  = [x[0] for x in self.getFoldersByUser(user)]
                 file_ids    = [x[0] for x in self.getFilesByFolderIDs(folder_ids)]
 
-                release_ids = self.getReleaseIDsByUser(user)
-                artist_ids = self.getArtistIDsByUser(user)
-
-                release_tag_ids = {}
-                for release_id in release_ids:
-                    release_tag_ids[release_id] = self.getTagIDsByReleaseID(release_id)
-
-                artist_tag_ids = {}
-                for artist_id in artist_ids:
-                    artist_tag_ids[artist_id] = self.getTagIDsByArtistID(artist_id)
-
-                ''' find IDs that are referenced elsewhere '''
-                release_user_ids = self.getUserIDsByReleaseIDs(release_ids)
-                artist_user_ids = self.getUserIDsByArtistIDs(artist_ids)
-
-                release_tag_release_ids = self.getReleaseIDsByTagIDs(release_tag_ids)
-                artist_tag_artist_ids = self.getArtistIDsByTagIDs(artist_tag_ids)
-
-                ''' filter IDs that are referenced elsewhere '''
-
-
-
-
                 ''' remove records from database '''
-
-
-
-
-                # print(user_id)
-                # print(folder_ids)
-                # print(file_ids)
-                pprint(release_tag_ids)
-                pprint(artist_tag_ids)
-                # print(release_tag_release_ids)
-                # print(artist_tag_artist_ids)
-
                 # self.conn.execute('PRAGMA foreign_keys = ON;')
                 # self.conn.execute('DELETE FROM users WHERE name=?;', (user,) )
                 self.conn.commit()
         except Exception as e:
-
-            raise
             print(e)
             print('Error deleting user:', user)
-
-
-
 
 if __name__ == '__main__':
 
@@ -560,5 +314,3 @@ if __name__ == '__main__':
         db = Database()
         db.setListenPort(args.setlistenport)
         db.close()
-
-    # db.removeUser('britpop trump')
